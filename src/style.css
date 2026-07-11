@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#drop-zone.drag-over {
+  border-color: rgb(16 185 129 / 0.8);
+  background-color: rgb(16 185 129 / 0.05);
+}
+
+#drop-zone.drag-over svg {
+  color: rgb(16 185 129);
+  transform: scale(1.1);
+  transition: transform 0.15s ease-out, color 0.15s ease-out;
+}
+
+#download-link:focus {
+  outline: 2px solid rgb(16 185 129);
+  outline-offset: 2px;
+}
+
+#download-link:focus:not(:focus-visible) {
+  outline: none;
+}
