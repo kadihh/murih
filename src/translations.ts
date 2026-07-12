@@ -19,6 +19,7 @@ export const translations = {
     done: "تم!",
     errorConversion: "فشل التحويل",
     keepOpen: "اترك هذه الصفحة مفتوحة أثناء التحويل",
+    anotherProject: "مشاريع أخرى",
   },
   en: {
     title: "Murih — PDF Color Inverter",
@@ -40,6 +41,7 @@ export const translations = {
     done: "Done!",
     errorConversion: "Conversion failed",
     keepOpen: "Keep this tab open during conversion",
+    anotherProject: "Other Projects",
   }
 } as const
 

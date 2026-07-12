@@ -11,6 +11,45 @@ function invertImageData(data: Uint8ClampedArray): void {
   }
 }
 
+function isPageDark(
+  ctx: OffscreenCanvasRenderingContext2D,
+  w: number,
+  h: number,
+): boolean {
+  const points: [number, number][] = []
+
+  // 4 corners
+  points.push([0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1])
+
+  // 4 edge midpoints
+  points.push([Math.floor(w / 2), 0], [Math.floor(w / 2), h - 1])
+  points.push([0, Math.floor(h / 2)], [w - 1, Math.floor(h / 2)])
+
+  // 8 more points: 2 per edge, evenly spaced
+  const stepX = Math.floor(w / 3)
+  const stepY = Math.floor(h / 3)
+  points.push([stepX, 0], [w - 1 - stepX, 0])          // top edge
+  points.push([stepX, h - 1], [w - 1 - stepX, h - 1])  // bottom edge
+  points.push([0, stepY], [0, h - 1 - stepY])           // left edge
+  points.push([w - 1, stepY], [w - 1, h - 1 - stepY])  // right edge
+
+  let totalLuminance = 0
+  let sampled = 0
+
+  for (const [x, y] of points) {
+    const pixel = ctx.getImageData(x, y, 1, 1).data
+    // skip fully transparent pixels
+    if (pixel[3] === 0) continue
+    // perceptual luminance
+    totalLuminance += 0.299 * pixel[0] + 0.587 * pixel[1] + 0.114 * pixel[2]
+    sampled++
+  }
+
+  if (sampled === 0) return false
+
+  return totalLuminance / sampled < 128
+}
+
 async function convert(data: ArrayBuffer, scale: number): Promise<Blob> {
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise
   const pdfDoc = await PDFDocument.create()
@@ -27,9 +66,11 @@ async function convert(data: ArrayBuffer, scale: number): Promise<Blob> {
     await page.render({ canvasContext: ctx as unknown as CanvasRenderingContext2D, viewport }).promise
     page.cleanup()
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    invertImageData(imageData.data)
-    ctx.putImageData(imageData, 0, 0)
+    if (!isPageDark(ctx, canvas.width, canvas.height)) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      invertImageData(imageData.data)
+      ctx.putImageData(imageData, 0, 0)
+    }
 
     const jpegBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.95 })
     const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer())
