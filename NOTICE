@@ -1,0 +1,11 @@
+This product includes software developed by third parties:
+
+1. pdf.js (pdfjs-dist)
+   - License: Apache License 2.0
+   - Copyright: 2019 Mozilla and individual contributors
+   - Homepage: https://mozilla.github.io/pdf.js/
+
+2. pdf-lib
+   - License: Apache License 2.0
+   - Copyright: 2019 Andrew Dillon
+   - Homepage: https://pdf-lib.org/
