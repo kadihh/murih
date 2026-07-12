@@ -1,5 +1,6 @@
 import { formatFileSize, isPdfFile, isOversized, createObjectUrl, revokeObjectUrl } from './utils'
-import { loadPdf, convertPdf, type ProcessCallbacks } from './pdf-processor'
+import { convertPdf, type ProcessCallbacks } from './pdf-processor'
+import { initLang, toggleLanguage, t } from './i18n'
 
 const DOM = {
   dropZone: () => document.getElementById('drop-zone')!,
@@ -19,17 +20,21 @@ const DOM = {
   error: () => document.getElementById('error')!,
   errorMessage: () => document.getElementById('error-message')!,
   errorDismiss: () => document.getElementById('error-dismiss')!,
+  langToggle: () => document.getElementById('lang-toggle')!,
 }
 
 let currentFile: File | null = null
 let currentObjectUrl: string | null = null
 let downloadCleanup: AbortController | null = null
+let wakeLock: WakeLockSentinel | null = null
 
 export function initUI(): void {
+  initLang()
   setupDragDrop()
   setupFileInput()
   setupConvertButton()
   setupErrorDismiss()
+  setupLanguageToggle()
 }
 
 function setupDragDrop(): void {
@@ -71,6 +76,12 @@ function setupErrorDismiss(): void {
   })
 }
 
+function setupLanguageToggle(): void {
+  DOM.langToggle().addEventListener('click', () => {
+    toggleLanguage()
+  })
+}
+
 function handleFile(file: File): void {
   hideError()
   DOM.downloadSection().classList.add('hidden')
@@ -81,12 +92,12 @@ function handleFile(file: File): void {
   }
 
   if (!isPdfFile(file)) {
-    showError('Please select a valid PDF file.')
+    showError(t('errorInvalidPdf'))
     return
   }
 
   if (isOversized(file)) {
-    showError('File is too large. Maximum size is 100 MB.')
+    showError(t('errorTooLarge'))
     return
   }
 
@@ -113,6 +124,12 @@ async function startConversion(file: File): Promise<void> {
     currentObjectUrl = null
   }
 
+  try {
+    wakeLock = await navigator.wakeLock.request('screen')
+  } catch {
+    // Wake Lock not supported or denied — continue without it
+  }
+
   const callbacks: ProcessCallbacks = {
     onProgress(current, total) {
       DOM.progressPages().textContent = `${current} / ${total}`
@@ -124,27 +141,28 @@ async function startConversion(file: File): Promise<void> {
   }
 
   try {
-    DOM.progressText().textContent = 'Loading PDF...'
+    DOM.progressText().textContent = t('converting')
     DOM.progressBar().style.width = '0%'
     DOM.progressPages().textContent = ''
     const arrayBuffer = await file.arrayBuffer()
-    const pdf = await loadPdf(arrayBuffer)
 
-    DOM.progressText().textContent = 'Converting...'
+    const blob = await convertPdf(arrayBuffer, scale, callbacks)
 
-    const blob = await convertPdf(pdf, scale, callbacks)
-
-    DOM.progressText().textContent = 'Done!'
+    DOM.progressText().textContent = t('done')
     DOM.progressBar().style.width = '100%'
     DOM.progressPages().textContent = ''
 
     showDownload(blob, file.name)
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Conversion failed'
+    const msg = err instanceof Error ? err.message : t('errorConversion')
     showError(msg)
   } finally {
     DOM.convertBtn().disabled = false
     DOM.progress().classList.add('hidden')
+    if (wakeLock) {
+      wakeLock.release()
+      wakeLock = null
+    }
   }
 }
 

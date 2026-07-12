@@ -1,0 +1,47 @@
+export const translations = {
+  ar: {
+    title: "Murih — معاكس ألوان PDF",
+    dropText: "اسحب ملف PDF هنا أو انقر للتصفح",
+    quality: "الجودة",
+    option15: "1.5x — ملف صغير",
+    option2: "2x — متوازن",
+    option3: "3x — حاد (افتراضي)",
+    option4: "4x — أقصى",
+    mobileRec: "موصى به: 3x للقراءة على الجوال. الأعلى = أوضح لكن ملفات أكبر",
+    invertDownload: "عكس الألوان وتحميل",
+    processing: "جاري المعالجة...",
+    downloadPdf: "تحميل PDF المعكوس",
+    dismiss: "إغلاق",
+    errorInvalidPdf: "الرجاء اختيار ملف PDF صالح.",
+    errorTooLarge: "الملف كبير جداً. الحد الأقصى 100 ميجابايت.",
+    loadingPdf: "جاري تحميل PDF...",
+    converting: "جاري التحويل...",
+    done: "تم!",
+    errorConversion: "فشل التحويل",
+    keepOpen: "اترك هذه الصفحة مفتوحة أثناء التحويل",
+  },
+  en: {
+    title: "Murih — PDF Color Inverter",
+    dropText: "Drop your PDF here or click to browse",
+    quality: "Quality",
+    option15: "1.5x — Small file",
+    option2: "2x — Balanced",
+    option3: "3x — Sharp (default)",
+    option4: "4x — Maximum",
+    mobileRec: "Recommended: 3x for mobile reading. Higher = sharper but larger files.",
+    invertDownload: "Invert Colors & Download",
+    processing: "Processing...",
+    downloadPdf: "Download Inverted PDF",
+    dismiss: "Dismiss",
+    errorInvalidPdf: "Please select a valid PDF file.",
+    errorTooLarge: "File is too large. Maximum size is 100 MB.",
+    loadingPdf: "Loading PDF...",
+    converting: "Converting...",
+    done: "Done!",
+    errorConversion: "Conversion failed",
+    keepOpen: "Keep this tab open during conversion",
+  }
+} as const
+
+export type Lang = keyof typeof translations
+export type TranslationKey = keyof typeof translations.ar
