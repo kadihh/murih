@@ -21,6 +21,7 @@ const DOM = {
   errorMessage: () => document.getElementById('error-message')!,
   errorDismiss: () => document.getElementById('error-dismiss')!,
   langToggle: () => document.getElementById('lang-toggle')!,
+  scaleWarning: () => document.getElementById('scale-warning')!,
 }
 
 let currentFile: File | null = null
@@ -35,6 +36,7 @@ export function initUI(): void {
   setupConvertButton()
   setupErrorDismiss()
   setupLanguageToggle()
+  setupScaleWarning()
 }
 
 function setupDragDrop(): void {
@@ -79,6 +81,20 @@ function setupErrorDismiss(): void {
 function setupLanguageToggle(): void {
   DOM.langToggle().addEventListener('click', () => {
     toggleLanguage()
+  })
+}
+
+function setupScaleWarning(): void {
+  const select = DOM.scaleSelect()
+  const warning = DOM.scaleWarning()
+
+  select.addEventListener('change', () => {
+    const isMobile = window.innerWidth < 768
+    if (isMobile && select.value === '4') {
+      warning.classList.remove('hidden')
+    } else {
+      warning.classList.add('hidden')
+    }
   })
 }
 
