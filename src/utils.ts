@@ -23,11 +23,6 @@ export function isOversized(file: File): boolean {
   return file.size > MAX_FILE_SIZE
 }
 
-export function estimateOutputSize(inputBytes: number, scale: number): number {
-  const scaleFactor = (scale / 1.5) ** 2
-  return inputBytes * 0.6 * scaleFactor
-}
-
 export function createObjectUrl(blob: Blob): string {
   return URL.createObjectURL(blob)
 }

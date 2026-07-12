@@ -1,6 +1,5 @@
-import { formatFileSize, estimateOutputSize, isPdfFile, isOversized, createObjectUrl, revokeObjectUrl } from './utils'
-import { loadPdf, processAllPages, type ProcessCallbacks } from './pdf-processor'
-import { exportPdf } from './pdf-export'
+import { formatFileSize, isPdfFile, isOversized, createObjectUrl, revokeObjectUrl } from './utils'
+import { loadPdf, convertPdf, type ProcessCallbacks } from './pdf-processor'
 
 const DOM = {
   dropZone: () => document.getElementById('drop-zone')!,
@@ -9,7 +8,6 @@ const DOM = {
   fileName: () => document.getElementById('file-name')!,
   fileSize: () => document.getElementById('file-size')!,
   scaleSelect: () => document.getElementById('scale-select') as HTMLSelectElement,
-  sizeWarning: () => document.getElementById('size-warning')!,
   convertBtn: () => document.getElementById('convert-btn') as HTMLButtonElement,
   progress: () => document.getElementById('progress')!,
   progressText: () => document.getElementById('progress-text')!,
@@ -21,13 +19,10 @@ const DOM = {
   error: () => document.getElementById('error')!,
   errorMessage: () => document.getElementById('error-message')!,
   errorDismiss: () => document.getElementById('error-dismiss')!,
-  toast: () => document.getElementById('toast')!,
-  toastMessage: () => document.getElementById('toast-message')!,
 }
 
 let currentFile: File | null = null
 let currentObjectUrl: string | null = null
-let toastTimer: ReturnType<typeof setTimeout> | null = null
 let downloadCleanup: AbortController | null = null
 
 export function initUI(): void {
@@ -35,7 +30,6 @@ export function initUI(): void {
   setupFileInput()
   setupConvertButton()
   setupErrorDismiss()
-  setupScaleChange()
 }
 
 function setupDragDrop(): void {
@@ -77,13 +71,8 @@ function setupErrorDismiss(): void {
   })
 }
 
-function setupScaleChange(): void {
-  DOM.scaleSelect().addEventListener('change', updateSizeWarning)
-}
-
 function handleFile(file: File): void {
   hideError()
-  hideToast()
   DOM.downloadSection().classList.add('hidden')
 
   if (currentObjectUrl) {
@@ -106,15 +95,9 @@ function handleFile(file: File): void {
   DOM.fileSize().textContent = formatFileSize(file.size)
   DOM.controls().classList.remove('hidden')
   DOM.progress().classList.add('hidden')
-  updateSizeWarning()
-}
-
-function updateSizeWarning(): void {
-  if (!currentFile) return
-  const scale = parseFloat(DOM.scaleSelect().value)
-  const estimated = estimateOutputSize(currentFile.size, scale)
-  const show = estimated > 50 * 1024 * 1024
-  DOM.sizeWarning().classList.toggle('hidden', !show)
+  if (window.innerWidth < 768) {
+    DOM.scaleSelect().value = '2'
+  }
 }
 
 async function startConversion(file: File): Promise<void> {
@@ -130,7 +113,7 @@ async function startConversion(file: File): Promise<void> {
     currentObjectUrl = null
   }
 
-  const inversionCallbacks: ProcessCallbacks = {
+  const callbacks: ProcessCallbacks = {
     onProgress(current, total) {
       DOM.progressPages().textContent = `${current} / ${total}`
       DOM.progressBar().style.width = `${(current / total) * 100}%`
@@ -147,25 +130,9 @@ async function startConversion(file: File): Promise<void> {
     const arrayBuffer = await file.arrayBuffer()
     const pdf = await loadPdf(arrayBuffer)
 
-    DOM.progressText().textContent = 'Inverting colors...'
+    DOM.progressText().textContent = 'Converting...'
 
-    const pages = await processAllPages(pdf, scale, inversionCallbacks)
-
-    if (pages.length === 0) {
-      showError('No pages could be processed.')
-      return
-    }
-
-    DOM.progressText().textContent = 'Building PDF...'
-    DOM.progressBar().style.width = '0%'
-    DOM.progressPages().textContent = ''
-
-    const blob = await exportPdf(pages, {
-      onProgress(current, total) {
-        DOM.progressPages().textContent = `${current} / ${total}`
-        DOM.progressBar().style.width = `${(current / total) * 100}%`
-      },
-    })
+    const blob = await convertPdf(pdf, scale, callbacks)
 
     DOM.progressText().textContent = 'Done!'
     DOM.progressBar().style.width = '100%'
@@ -198,13 +165,10 @@ function showDownload(blob: Blob, originalName: string): void {
 
   requestAnimationFrame(() => link.click())
 
-  showToast('Ready — press Enter to download')
-
   downloadCleanup?.abort()
   downloadCleanup = new AbortController()
 
   link.addEventListener('click', () => {
-    showToast('PDF downloaded successfully')
     setTimeout(() => {
       if (currentObjectUrl === url) {
         revokeObjectUrl(url)
@@ -221,19 +185,4 @@ function showError(message: string): void {
 
 function hideError(): void {
   DOM.error().classList.add('hidden')
-}
-
-function showToast(message: string, duration = 3500): void {
-  if (toastTimer) clearTimeout(toastTimer)
-  DOM.toastMessage().textContent = message
-  DOM.toast().classList.remove('hidden')
-  toastTimer = setTimeout(() => hideToast(), duration)
-}
-
-function hideToast(): void {
-  if (toastTimer) {
-    clearTimeout(toastTimer)
-    toastTimer = null
-  }
-  DOM.toast().classList.add('hidden')
 }

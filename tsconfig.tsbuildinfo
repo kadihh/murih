@@ -1,1 +1,1 @@
-{"root":["./src/main.ts","./src/pdf-export.ts","./src/pdf-processor.ts","./src/ui.ts","./src/utils.ts"],"version":"5.9.3"}
+{"root":["./src/main.ts","./src/pdf-processor.ts","./src/ui.ts","./src/utils.ts"],"version":"5.9.3"}
