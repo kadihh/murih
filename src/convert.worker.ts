@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import { PDFDocument } from 'pdf-lib'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href
 
 function invertImageData(data: Uint8ClampedArray): void {
   for (let i = 0; i < data.length; i += 4) {
