@@ -3,11 +3,18 @@ import { PDFDocument } from 'pdf-lib'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href
 
+const GAMMA = 0.78
+
 function invertImageData(data: Uint8ClampedArray): void {
+  const lut = new Uint8Array(256)
+  for (let v = 0; v < 256; v++) {
+    lut[v] = Math.round(255 * Math.pow((255 - v) / 255, GAMMA))
+  }
+
   for (let i = 0; i < data.length; i += 4) {
-    data[i] = 255 - data[i]
-    data[i + 1] = 255 - data[i + 1]
-    data[i + 2] = 255 - data[i + 2]
+    data[i] = lut[data[i]]
+    data[i + 1] = lut[data[i + 1]]
+    data[i + 2] = lut[data[i + 2]]
   }
 }
 
