@@ -38,12 +38,14 @@ Output is image-based — text in the result PDF is **not selectable or searchab
 
 ```
 src/
-  main.ts           Entry point — imports, wires UI
-  style.css          Tailwind imports + drag-over styles
-  pdf-processor.ts   Core: render PDF pages, invert pixels, return image data
-  pdf-export.ts      Build downloadable PDF with pdf-lib
-  ui.ts              DOM events: drag-drop, progress, download button, errors
-  utils.ts           Pure helpers: invertImageData(), formatFileSize(), etc.
+  main.ts              Entry point — imports, wires UI
+  style.css            Tailwind imports + drag-over styles
+  pdf-processor.ts     Worker orchestrator: spawns convert.worker.ts
+  convert.worker.ts    Web Worker: render PDF, invert pixels, build output PDF
+  ui.ts                DOM events: drag-drop, progress, download button, errors
+  utils.ts             Pure helpers: formatFileSize(), isPdfFile(), etc.
+  i18n.ts              Internationalization logic (Arabic/English)
+  translations.ts      Translation strings
 ```
 
 ## Key Gotchas
@@ -55,6 +57,7 @@ src/
 - **Scale**: Default render scale is 3.0 (~216 DPI effective). Higher = sharper text, bigger file. Configurable in UI.
 - **File size warning**: Show a warning for PDFs over 50MB — large files at 3x scale produce very large output.
 - **Both pdf-lib and pdfjs-dist are Apache-2.0 licensed** — safe to ship in open-source projects.
+- **Dark page detection**: `isPageDark()` samples 16 edge/border points to detect pages with dark backgrounds. These pages are not inverted (they're already readable in dark mode).
 
 ## Design Principles
 

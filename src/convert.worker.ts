@@ -55,12 +55,16 @@ async function convert(data: ArrayBuffer, scale: number): Promise<Blob> {
   const pdfDoc = await PDFDocument.create()
   const total = pdf.numPages
 
+  if (total === 0) {
+    throw new Error('PDF has no pages.')
+  }
+
   for (let i = 1; i <= total; i++) {
     const page = await pdf.getPage(i)
     const viewport = page.getViewport({ scale })
 
     const canvas = new OffscreenCanvas(viewport.width, viewport.height)
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) throw new Error('OffscreenCanvas context not available')
 
     await page.render({ canvasContext: ctx as unknown as CanvasRenderingContext2D, viewport }).promise
@@ -85,10 +89,6 @@ async function convert(data: ArrayBuffer, scale: number): Promise<Blob> {
     })
 
     self.postMessage({ type: 'progress', current: i, total })
-  }
-
-  if (pdf.numPages === 0) {
-    throw new Error('No pages could be processed.')
   }
 
   const pdfBytes = await pdfDoc.save()

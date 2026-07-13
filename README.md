@@ -83,10 +83,12 @@ murih/
 └── src/
     ├── main.ts           Entry point — imports CSS, initializes UI
     ├── style.css          Tailwind imports + interaction styles
-    ├── pdf-processor.ts   PDF rendering + pixel inversion pipeline
-    ├── pdf-export.ts      Builds downloadable PDF from inverted images
+    ├── pdf-processor.ts   Worker orchestrator: spawns convert.worker.ts
+    ├── convert.worker.ts  Web Worker: render PDF, invert pixels, build output PDF
     ├── ui.ts              All DOM interactions and event handling
-    └── utils.ts           Pure helper functions (no side effects)
+    ├── utils.ts           Pure helper functions (no side effects)
+    ├── i18n.ts            Internationalization logic (Arabic/English)
+    └── translations.ts    Translation strings
 ```
 
 ---
@@ -112,22 +114,6 @@ initUI()
 ### `src/utils.ts` — Pure Helper Functions
 
 Every function here is pure (no side effects, no DOM access, no async). They exist to keep business logic out of the UI and processing layers.
-
-#### `invertImageData(imageData: ImageData): void`
-
-The core algorithm. Mutates the pixel buffer in-place for zero allocation:
-
-```ts
-const data = imageData.data  // Uint8ClampedArray [R,G,B,A, R,G,B,A, ...]
-for (let i = 0; i < data.length; i += 4) {
-  data[i]     = 255 - data[i]      // R
-  data[i + 1] = 255 - data[i + 1]  // G
-  data[i + 2] = 255 - data[i + 2]  B
-  // data[i + 3] alpha is untouched
-}
-```
-
-Steps by 4 because each pixel is 4 bytes (R, G, B, A). Alpha is preserved — transparent pixels stay transparent.
 
 #### `formatFileSize(bytes: number): string`
 
@@ -238,63 +224,49 @@ for (let i = 1; i <= total; i++) {
 
 ---
 
-### `src/pdf-export.ts` — PDF Output Builder
+### `src/convert.worker.ts` — Web Worker
 
-Takes the inverted page images and builds a downloadable PDF using pdf-lib.
+Runs in a separate thread. Handles the heavy lifting: PDF rendering, pixel inversion, and output PDF building.
 
-#### `ExportCallbacks` Interface
+#### `invertImageData(data: Uint8ClampedArray): void`
+
+The core algorithm. Mutates the pixel buffer in-place for zero allocation:
 
 ```ts
-interface ExportCallbacks {
-  onProgress: (current: number, total: number) => void
+for (let i = 0; i < data.length; i += 4) {
+  data[i]     = 255 - data[i]      // R
+  data[i + 1] = 255 - data[i + 1]  // G
+  data[i + 2] = 255 - data[i + 2]  // B
+  // data[i + 3] alpha is untouched
 }
 ```
 
-Same pattern as `ProcessCallbacks` — fires after each page is embedded, so the UI can show build progress.
+Steps by 4 because each pixel is 4 bytes (R, G, B, A). Alpha is preserved — transparent pixels stay transparent.
 
-#### `exportPdf(pages, callbacks?): Promise<Blob>`
+#### `isPageDark(ctx, w, h): boolean`
 
-Creates the output PDF:
+Samples 16 edge/border points to detect pages with dark backgrounds. If the average luminance is below 128, the page is considered dark and skipped during inversion (it's already readable in dark mode).
 
-```ts
-const pdfDoc = await PDFDocument.create()
+#### `convert(data, scale): Promise<Blob>`
 
-for (let i = 0; i < pages.length; i++) {
-  const pngBytes = await imageDataToPngBytes(pages[i].imageData)
-  const pngImage = await pdfDoc.embedPng(pngBytes)
+The main conversion pipeline:
 
-  const pdfPage = pdfDoc.addPage([pages[i].width, pages[i].height])
-  pdfPage.drawImage(pngImage, {
-    x: 0, y: 0,
-    width: pages[i].width,
-    height: pages[i].height,
-  })
+1. Load the PDF with pdfjs-dist
+2. Create a new pdf-lib document
+3. For each page: render to canvas → check if dark → invert if needed → encode as JPEG → embed in output PDF
+4. Post progress messages back to the main thread
+5. Return the final PDF as a Blob
 
-  callbacks?.onProgress(i + 1, pages.length)
-}
+#### Message Protocol
 
-const pdfBytes = await pdfDoc.save()
-return new Blob([pdfBytes] as BlobPart[], { type: 'application/pdf' })
-```
+The worker communicates via `postMessage`:
 
-For each page:
-1. Convert `ImageData` to PNG bytes (via canvas `toBlob`)
-2. Embed the PNG into the pdf-lib document
-3. Create a new PDF page sized to the image dimensions
-4. Draw the image at full size (0,0 origin, full width/height)
-
-After all pages: serialize the PDF to bytes and wrap in a Blob for download.
-
-#### `imageDataToPngBytes(imageData): Promise<Uint8Array>`
-
-Converts raw pixel data to PNG:
-
-1. Creates a temporary canvas sized to the image
-2. `putImageData()` writes the inverted pixels onto it
-3. `canvas.toBlob(callback, 'image/png', 1.0)` encodes as PNG (quality param is ignored for PNG — it's lossless)
-4. Reads the Blob into a `Uint8Array` for pdf-lib's `embedPng()`
-
-The canvas is local and GC'd after the function returns. No memory leak.
+| Message | Direction | Payload |
+|---------|-----------|---------|
+| `{ type: 'progress', current, total }` | Worker → Main | Page progress update |
+| `{ type: 'done', blob }` | Worker → Main | Conversion complete |
+| `{ type: 'error', message }` | Worker → Main | Conversion failed |
+| `{ data, scale }` | Main → Worker | Start conversion (ArrayBuffer transferred) |
 
 ---
 
@@ -313,23 +285,23 @@ const DOM = {
 
 Lazy-accessor pattern: each call to `DOM.foo()` does a fresh `getElementById`. This avoids storing stale references if the DOM changes. The `!` non-null assertion is safe because all IDs exist in `index.html`.
 
-#### Module-Level State (lines 28-31)
+#### Module-Level State (lines 27-30)
 
 ```ts
 let currentFile: File | null = null
 let currentObjectUrl: string | null = null
-let toastTimer: ReturnType<typeof setTimeout> | null = null
 let downloadCleanup: AbortController | null = null
+let wakeLock: WakeLockSentinel | null = null
 ```
 
 - `currentFile` — the selected PDF, kept so the convert button can access it
 - `currentObjectUrl` — the blob URL of the last conversion, revoked on re-conversion or new file
-- `toastTimer` — tracks the auto-hide timeout so consecutive toasts don't stack
 - `downloadCleanup` — AbortController that cleans up the download click listener between conversions (prevents listener accumulation)
+- `wakeLock` — keeps the screen awake during conversion (released when done)
 
 #### `initUI()`
 
-Called once from `main.ts`. Wires up five event listeners:
+Called once from `main.ts`. Wires up six event listeners:
 
 | Handler | Event | Element | What it does |
 |---------|-------|---------|-------------|
@@ -337,17 +309,18 @@ Called once from `main.ts`. Wires up five event listeners:
 | `setupFileInput` | change | file-input | File selection via native picker |
 | `setupConvertButton` | click | convert-btn | Starts conversion |
 | `setupErrorDismiss` | click | error-dismiss | Hides error banner |
-| `setupScaleChange` | change | scale-select | Updates size warning |
+| `setupLanguageToggle` | click | lang-toggle | Switches Arabic/English |
+| `setupScaleWarning` | change | scale-select | Shows warning on 4x for mobile |
 
 #### `handleFile(file: File)`
 
 Called when a file is selected (via drop or picker):
 
-1. Hides any previous error, toast, and download section
+1. Hides any previous error and download section
 2. Revokes any existing object URL (frees the old blob)
 3. Validates: is it a PDF? Is it under 100MB?
 4. If valid: stores `currentFile`, shows the controls section (file name, quality selector, convert button)
-5. Calls `updateSizeWarning()` to show/hide the size warning based on current scale
+5. On mobile, defaults scale to 2x for better performance
 
 #### `updateSizeWarning()`
 
@@ -360,17 +333,14 @@ This is the heart of the app. The async flow:
 ```
 1.  Disable convert button, show progress section, hide download/error
 2.  Revoke any old object URL
-3.  Set progress text to "Loading PDF..."
-4.  Read file as ArrayBuffer
-5.  loadPdf() → parse the PDF
-6.  Set progress text to "Inverting colors..."
-7.  processAllPages() → render + invert each page (progress bar fills)
-8.  If no pages processed → show error, return
-9.  Set progress text to "Building PDF..."
-10. exportPdf() → build output PDF (progress bar fills again)
-11. Set progress text to "Done!", bar to 100%
-12. showDownload() → show download section, hide progress, attempt auto-click
-13. finally → re-enable convert button, hide progress section
+3.  Acquire wake lock (keeps screen on during conversion)
+4.  Set progress text to "Converting..."
+5.  Read file as ArrayBuffer
+6.  convertPdf() → spawns Web Worker that renders + inverts + builds PDF
+7.  Worker posts progress messages → progress bar fills
+8.  Set progress text to "Done!", bar to 100%
+9.  showDownload() → show download section, hide progress, attempt auto-click
+10. finally → re-enable convert button, hide progress, release wake lock
 ```
 
 The `finally` block ensures the progress section is always hidden and the button is always re-enabled, regardless of success or error.
@@ -384,9 +354,7 @@ Handles post-conversion UI:
 3. Shows the download section, hides progress
 4. Focuses the download link (accessibility)
 5. Attempts `requestAnimationFrame(() => link.click())` for auto-download (may be blocked by browser)
-6. Shows toast: "Ready — press Enter to download"
-7. Adds a `{ once: true }` click listener on the download link (with AbortController cleanup):
-   - Shows "PDF downloaded successfully" toast
+6. Adds a `{ once: true }` click listener on the download link (with AbortController cleanup):
    - Schedules object URL revocation after 30 seconds (gives browser time to finish downloading)
 
 The `downloadCleanup` AbortController prevents listener accumulation if the user converts multiple files — each new conversion aborts the previous listener.
@@ -394,14 +362,6 @@ The `downloadCleanup` AbortController prevents listener accumulation if the user
 #### `showError(message)` / `hideError()`
 
 Toggles the error section. `showError` sets the message text and removes the `hidden` class. `hideError` adds it back.
-
-#### `showToast(message, duration?)` / `hideToast()`
-
-Toast notifications:
-
-- `showToast` clears any existing timer, sets the message, shows the toast, starts a 3.5s auto-hide timer
-- `hideToast` clears the timer and hides the toast
-- Consecutive calls to `showToast` replace the previous toast (no stacking)
 
 ---
 
@@ -411,15 +371,13 @@ Semantic structure:
 
 ```
 <body>
-  <header>    — Logo + app name
+  <header>    — Language toggle + app name
   <main>      — All interactive sections (stacked vertically)
     drop-zone    — File input (drag & drop + click)
     controls     — File info, quality selector, convert button
     progress     — Progress bar (hidden until conversion starts)
     download     — Download button (hidden until conversion completes)
     error        — Error banner (hidden by default)
-  <footer>    — Privacy notice
-  <toast>     — Fixed-position notification (top-right)
 </body>
 ```
 
