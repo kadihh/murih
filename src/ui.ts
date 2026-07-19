@@ -197,8 +197,6 @@ function showDownload(blob: Blob, originalName: string): void {
 
   link.focus({ preventScroll: true })
 
-  requestAnimationFrame(() => link.click())
-
   downloadCleanup?.abort()
   downloadCleanup = new AbortController()
 

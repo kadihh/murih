@@ -3,18 +3,27 @@ import { PDFDocument } from 'pdf-lib'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href
 
-const GAMMA = 0.78
-
-function invertImageData(data: Uint8ClampedArray): void {
-  const lut = new Uint8Array(256)
-  for (let v = 0; v < 256; v++) {
-    lut[v] = Math.round(255 * Math.pow((255 - v) / 255, GAMMA))
-  }
-
+function toBlackAndWhite(data: Uint8ClampedArray): void {
   for (let i = 0; i < data.length; i += 4) {
-    data[i] = lut[data[i]]
-    data[i + 1] = lut[data[i + 1]]
-    data[i + 2] = lut[data[i + 2]]
+    const a = data[i + 3]
+    if (a === 0) continue
+
+    const r = data[i]
+    const g = data[i + 1]
+    const b = data[i + 2]
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+
+    if (luminance >= 128) {
+      data[i] = 0
+      data[i + 1] = 0
+      data[i + 2] = 0
+      data[i + 3] = 255
+    } else {
+      data[i] = 255
+      data[i + 1] = 255
+      data[i + 2] = 255
+      data[i + 3] = 255
+    }
   }
 }
 
@@ -79,7 +88,7 @@ async function convert(data: ArrayBuffer, scale: number): Promise<Blob> {
 
     if (!isPageDark(ctx, canvas.width, canvas.height)) {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      invertImageData(imageData.data)
+      toBlackAndWhite(imageData.data)
       ctx.putImageData(imageData, 0, 0)
     }
 
